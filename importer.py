@@ -73,20 +73,12 @@ def import_mrexpt(db, book_id, mrexpt_path) -> dict:
         try:
             annot = _convert_record(record, book_id, epub, best_spine)
             annotations.append(annot)
-            sc = annot.get('start_cfi')
-            sn = annot.get('spine_name')
-            si = annot.get('spine_index')
-            txt = annot.get('highlighted_text', '')[:20]
-            print(f'[hl2calibre] seq={record.seq}: spine={si} name={sn!r} cfi={sc!r} text={txt!r}')
             if 'start_cfi' not in annot:
                 warnings.append(f'序号 {record.seq}: 无法精确定位')
             else:
                 best_spine = annot['spine_index']
         except Exception as e:
             warnings.append(f'序号 {record.seq}: {e}')
-            print(f'[hl2calibre] seq={record.seq}: ERROR {e}')
-
-    print(f'[hl2calibre] {len(records)} records processed, {len(annotations)} OK')
 
     if not annotations:
         return {'success': 0, 'skipped': 0, 'failed': 0, 'errors': ['无有效标注'], 'details': []}
@@ -96,9 +88,7 @@ def import_mrexpt(db, book_id, mrexpt_path) -> dict:
             book_id, 'EPUB', annotations,
             user_type='local', user='viewer',
         )
-        print(f'[hl2calibre] merge OK: {len(annotations)} annotations written')
     except Exception as e:
-        print(f'[hl2calibre] merge FAILED: {e}')
         return {'success': 0, 'skipped': 0, 'failed': len(annotations), 'errors': [f'写入失败: {e}'], 'details': []}
 
     return {
