@@ -99,6 +99,21 @@ zf.close()
 
 ---
 
+## Credits / 致谢
+
+This plugin builds upon the work and insights from these open-source projects:
+
+- **[koreader-to-calibre-highlights](https://github.com/renke/koreader-to-calibre-highlights)** by renke — KOReader XPath-to-CFI conversion approach
+- **[koreader-calibre-plugin](https://github.com/kyxap/koreader-calibre-plugin)** by kyxap — KOReader sidecar file parsing and device sync patterns (including the `slpp.py` Lua parser)
+
+Thanks to the KOReader and Calibre communities for making annotation portability possible.
+
+---
+
+> 感谢以下开源项目为本插件提供的参考和启发：
+> - **renke/koreader-to-calibre-highlights** — KOReader XPath 转 CFI 方案
+> - **kyxap/koreader-calibre-plugin** — KOReader 侧边文件解析与设备同步模式（含 slpp.py Lua 解析器）
+
 ## License
 
 MIT
