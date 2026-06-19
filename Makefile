@@ -3,7 +3,8 @@ OUTPUT        := $(PLUGIN_NAME).zip
 
 # 打包所需的源文件
 PY_SRCS      := __init__.py action.py mrexpt_parser.py book_matcher.py \
-                cfi_encoder.py converter.py importer.py ui.py
+                cfi_encoder.py converter.py importer.py ui.py \
+                koreader_parser.py koreader_xpath_cfi.py slpp.py
 TXTS         := plugin-import-name-$(PLUGIN_NAME).txt
 IMAGES       := $(wildcard images/*)
 ALL_SRCS     := $(PY_SRCS) $(TXTS) $(IMAGES)

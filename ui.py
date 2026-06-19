@@ -5,10 +5,11 @@ from qt.core import (
 
 
 class ImportResultDialog(QDialog):
-    def __init__(self, results, parent=None):
+    def __init__(self, results, parent=None, source='Moon+ Reader'):
         super().__init__(parent)
-        self.setWindowTitle('导入结果')
-        self.setMinimumWidth(450)
+        self.source = source
+        self.setWindowTitle(f'{source} 导入结果')
+        self.setMinimumWidth(500)
         self._build_ui(results)
 
     def _build_ui(self, results):
@@ -25,7 +26,8 @@ class ImportResultDialog(QDialog):
 
         details = results.get('details', [])
         errors = results.get('errors', [])
-        if details or errors:
+        detail_warnings = results.get('detail_warnings', [])
+        if details or errors or detail_warnings:
             detail_text = QTextEdit()
             detail_text.setReadOnly(True)
             lines = []
@@ -33,6 +35,8 @@ class ImportResultDialog(QDialog):
                 lines.append(f'《{d.get("title", "未知")}》: {d.get("count", 0)} 条')
                 for w in d.get('warnings', []):
                     lines.append(f'  ⚠ {w}')
+            for w in detail_warnings:
+                lines.append(f'  ⚠ {w}')
             for e in errors:
                 lines.append(f'✗ {e}')
             detail_text.setPlainText('\n'.join(lines))

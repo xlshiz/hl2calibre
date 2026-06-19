@@ -5,11 +5,15 @@ from lxml import etree
 try:
     from .mrexpt_parser import parse_mrexpt
     from .cfi_encoder import find_text_in_html, build_text_map, _normalize
-    from .converter import convert_record
+    from .converter import convert_record, convert_koreader_record
+    from .koreader_parser import parse_sidecar_lua, KoreaderAnnotation, parse_xpath
+    from .koreader_xpath_cfi import XPathResolver, resolve_annotation_position
 except ImportError:
     from mrexpt_parser import parse_mrexpt
     from cfi_encoder import find_text_in_html, build_text_map, _normalize
-    from converter import convert_record
+    from converter import convert_record, convert_koreader_record
+    from koreader_parser import parse_sidecar_lua, KoreaderAnnotation, parse_xpath
+    from koreader_xpath_cfi import XPathResolver, resolve_annotation_position
 
 
 def _clear_viewer_cache(epub_path):
@@ -30,6 +34,118 @@ def _clear_viewer_cache(epub_path):
     cache_file = os.path.join(annots_dir, f'{path_key}.json')
     if os.path.exists(cache_file):
         os.remove(cache_file)
+
+
+def import_koreader(db, book_id, sidecar_path) -> dict:
+    """从 KOReader 侧边文件中导入标注。
+
+    KOReader 为每本电子书维护一个 metadata.epub.lua 侧边文件，
+    其中包含高亮标注。本函数解析该文件，将标注写入 Calibre。
+
+    Args:
+        db: Calibre database cache (new_api)
+        book_id: 目标书籍 ID
+        sidecar_path: KOReader 侧边 Lua 文件路径, e.g. "metadata.epub.lua"
+
+    Returns:
+        {success, skipped, failed, errors, details}
+    """
+    annotations = parse_sidecar_lua(sidecar_path)
+    if not annotations:
+        return {'success': 0, 'skipped': 0, 'failed': 0, 'errors': ['文件中无有效标注'], 'details': []}
+
+    mi = db.get_metadata(book_id)
+    calibre_title = (mi.title or '').strip()
+
+    epub_path = db.format_abspath(book_id, 'EPUB')
+    if not epub_path or not os.path.exists(epub_path):
+        return {'success': 0, 'skipped': 0, 'failed': 0, 'errors': ['EPUB 文件不存在'], 'details': []}
+
+    _clear_viewer_cache(epub_path)
+
+    # 构建 spine 信息
+    try:
+        with zipfile.ZipFile(epub_path, 'r') as zf:
+            opf_path = _find_opf(zf)
+            if not opf_path:
+                return {'success': 0, 'skipped': 0, 'failed': 0, 'errors': ['无法解析 EPUB OPF'], 'details': []}
+            spine_ids, id_to_href = _parse_opf(zf, opf_path)
+            spine_names = [id_to_href.get(sid, '') for sid in spine_ids]
+    except Exception as e:
+        return {'success': 0, 'skipped': 0, 'failed': 0, 'errors': [f'打开 EPUB 失败: {e}'], 'details': []}
+
+    # 按 spine 分组 annotations
+    resolver = XPathResolver(epub_path)
+    calibre_annots = []
+    warnings = []
+
+    for idx, annot in enumerate(annotations):
+        try:
+            # 跳过跨 spine 的标注（pos0 和 pos1 在不同 DocFragment）
+            parsed0 = parse_xpath(annot.pos0) if hasattr(annot, 'pos0') and annot.pos0 else None
+            parsed1 = parse_xpath(annot.pos1) if hasattr(annot, 'pos1') and annot.pos1 else None
+            if not parsed0:
+                warnings.append(f'标注 {idx + 1}: 无法解析位置 {annot.pos0}')
+                continue
+
+            spine_idx = parsed0['spine_index']
+
+            # 检查是否跨 spine
+            if parsed1 and parsed1['spine_index'] != spine_idx:
+                warnings.append(f'标注 {idx + 1}: 跨章节标注（spine {spine_idx} → {parsed1["spine_index"]}），跳过')
+                continue
+
+            # 检查 spine 索引是否有效
+            if spine_idx < 0 or spine_idx >= len(spine_names):
+                warnings.append(f'标注 {idx + 1}: spine 索引 {spine_idx} 超出范围')
+                continue
+
+            spine_name = spine_names[spine_idx]
+            spine_html = resolver.get_spine_html(spine_idx, spine_name)
+            if spine_html is None:
+                warnings.append(f'标注 {idx + 1}: 无法加载 spine {spine_name}')
+                continue
+
+            # 解析 XPath → CFI
+            start_cfi, end_cfi = resolve_annotation_position(spine_html, annot)
+            if not start_cfi:
+                warnings.append(f'标注 {idx + 1}: 无法转换为 CFI ({annot.pos0})')
+                continue
+
+            calibre_annot = convert_koreader_record(
+                annot, idx,
+                spine_index=spine_idx,
+                spine_name=spine_name,
+                book_id=book_id,
+                start_cfi=start_cfi,
+                end_cfi=end_cfi,
+            )
+            calibre_annots.append(calibre_annot)
+        except Exception as e:
+            warnings.append(f'标注 {idx + 1}: {e}')
+
+    resolver.close()
+
+    if not calibre_annots:
+        return {'success': 0, 'skipped': 0, 'failed': 0, 'errors': ['无有效标注（详见警告）'], 'detail_warnings': warnings, 'details': []}
+
+    try:
+        db.merge_annotations_for_book(
+            book_id, 'EPUB', calibre_annots,
+            user_type='local', user='viewer',
+        )
+        # 重建 FTS 索引，确保标注浏览对话框中可见
+        db.reindex_annotations()
+    except Exception as e:
+        return {'success': 0, 'skipped': 0, 'failed': len(calibre_annots), 'errors': [f'写入失败: {e}'], 'details': []}
+
+    return {
+        'success': len(calibre_annots),
+        'skipped': len(annotations) - len(calibre_annots),
+        'failed': 0,
+        'errors': [],
+        'details': [{'title': calibre_title, 'book_id': book_id, 'count': len(calibre_annots), 'warnings': warnings}],
+    }
 
 
 def import_mrexpt(db, book_id, mrexpt_path) -> dict:
