@@ -78,11 +78,20 @@ def _result_at(node_map, pos, text_length=None):
             cfi_path = _encode_cfi_path(elem, attr, char_offset)
 
             end_cfi_path = None
-            if text_length is not None:
-                end_offset = char_offset + text_length
-                if end_offset <= length:
-                    end_cfi_path = _encode_cfi_path(elem, attr, end_offset)
-                else:
+            if text_length is not None and text_length > 0:
+                end_pos = pos + text_length   # exclusive end in flat_text
+                last_char_pos = end_pos - 1    # position of last character
+                # Find the node containing the last character of the match
+                j = bisect.bisect_right(node_map, last_char_pos,
+                                         key=lambda e: e[2]) - 1
+                if j >= 0:
+                    e2, a2, s2, l2 = node_map[j]
+                    if s2 <= last_char_pos < s2 + l2:
+                        # CFI offset = offset within this node + 1 (exclusive)
+                        end_cfi_path = _encode_cfi_path(e2, a2,
+                                                         last_char_pos - s2 + 1)
+                # Fallback: end of the starting node
+                if end_cfi_path is None:
                     end_cfi_path = _encode_cfi_path(elem, attr, length)
 
             return (elem, attr, char_offset, cfi_path, end_cfi_path)
@@ -135,10 +144,23 @@ def _cfi_step_index(parent, child):
 def _encode_cfi_path(target_elem, attr, char_offset) -> str:
     # Walk from target to root (stop before document node)
     chain = []
-    current = target_elem
-    while current is not None:
-        chain.append(current)
-        current = current.getparent()
+    if attr == 'text':
+        # For elem.text: path goes up from the element, then text step '1'
+        current = target_elem
+        while current is not None:
+            chain.append(current)
+            current = current.getparent()
+    else:  # tail
+        # For elem.tail: the tail is a text node AFTER the element in the
+        # parent's DOM child list. The browser's encode() walks up from the
+        # text node, so the step is computed directly within the PARENT,
+        # NOT including the source element itself (e.g. <br/>) as a path step.
+        # If we included <br/> in the chain, decode would try to navigate
+        # into <br/>'s children for the next step, which don't exist.
+        current = target_elem.getparent()
+        while current is not None:
+            chain.append(current)
+            current = current.getparent()
     # Remove the document node (not a real element)
     if chain and not isinstance(chain[-1], etree._Element):
         chain.pop()
