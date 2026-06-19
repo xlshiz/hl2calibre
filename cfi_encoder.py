@@ -78,11 +78,20 @@ def _result_at(node_map, pos, text_length=None):
             cfi_path = _encode_cfi_path(elem, attr, char_offset)
 
             end_cfi_path = None
-            if text_length is not None:
-                end_offset = char_offset + text_length
-                if end_offset <= length:
-                    end_cfi_path = _encode_cfi_path(elem, attr, end_offset)
-                else:
+            if text_length is not None and text_length > 0:
+                end_pos = pos + text_length   # exclusive end in flat_text
+                last_char_pos = end_pos - 1    # position of last character
+                # Find the node containing the last character of the match
+                j = bisect.bisect_right(node_map, last_char_pos,
+                                         key=lambda e: e[2]) - 1
+                if j >= 0:
+                    e2, a2, s2, l2 = node_map[j]
+                    if s2 <= last_char_pos < s2 + l2:
+                        # CFI offset = offset within this node + 1 (exclusive)
+                        end_cfi_path = _encode_cfi_path(e2, a2,
+                                                         last_char_pos - s2 + 1)
+                # Fallback: end of the starting node
+                if end_cfi_path is None:
                     end_cfi_path = _encode_cfi_path(elem, attr, length)
 
             return (elem, attr, char_offset, cfi_path, end_cfi_path)
