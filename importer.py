@@ -2,9 +2,14 @@ import hashlib
 import os
 import zipfile
 from lxml import etree
-from .mrexpt_parser import parse_mrexpt
-from .cfi_encoder import find_text_in_html, build_text_map
-from .converter import convert_record
+try:
+    from .mrexpt_parser import parse_mrexpt
+    from .cfi_encoder import find_text_in_html, build_text_map, _normalize
+    from .converter import convert_record
+except ImportError:
+    from mrexpt_parser import parse_mrexpt
+    from cfi_encoder import find_text_in_html, build_text_map, _normalize
+    from converter import convert_record
 
 
 def _clear_viewer_cache(epub_path):
@@ -174,7 +179,9 @@ class _EpubSearch:
             raw = self._zf.read(full_path)
             tree = etree.HTML(raw)
             flat_text, node_map = build_text_map(tree)
-            self._cache[idx] = (flat_text, node_map, tree)
+            # Cache normalized text to avoid re-normalization per search
+            norm_flat = _normalize(flat_text)
+            self._cache[idx] = (flat_text, node_map, tree, norm_flat)
             return self._cache[idx]
         except Exception:
             self._cache[idx] = None
@@ -184,8 +191,8 @@ class _EpubSearch:
         data = self._load(idx)
         if data is None:
             return None, None, None
-        flat_text, node_map, tree = data
-        result = find_text_in_html(tree, search_text, flat_text, node_map)
+        flat_text, node_map, tree, norm_flat = data
+        result = find_text_in_html(tree, search_text, flat_text, node_map, norm_flat)
         if result:
             _, _, _, cfi_path, end_cfi_path = result
             spine_name = self._spine_names[idx] if idx < len(self._spine_names) else None

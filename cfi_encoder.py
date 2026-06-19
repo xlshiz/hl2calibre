@@ -1,3 +1,4 @@
+import bisect
 from typing import Optional
 from lxml import etree
 
@@ -30,7 +31,8 @@ def _normalize(text: str) -> str:
     return ' '.join(text.split())
 
 
-def find_text_in_html(root, search_text: str, flat_text=None, node_map=None) -> Optional[tuple]:
+def find_text_in_html(root, search_text: str, flat_text=None, node_map=None,
+                       norm_flat=None) -> Optional[tuple]:
     if flat_text is None or node_map is None:
         flat_text, node_map = build_text_map(root)
     text_len = len(search_text)
@@ -40,8 +42,9 @@ def find_text_in_html(root, search_text: str, flat_text=None, node_map=None) -> 
     if pos != -1:
         return _result_at(node_map, pos, text_len)
 
-    # Try normalized match
-    norm_flat = _normalize(flat_text)
+    # Try normalized match (use cached norm_flat if available)
+    if norm_flat is None:
+        norm_flat = _normalize(flat_text)
     norm_search = _normalize(search_text)
     pos = norm_flat.find(norm_search)
     if pos != -1:
@@ -66,20 +69,20 @@ def find_text_in_html(root, search_text: str, flat_text=None, node_map=None) -> 
 
 
 def _result_at(node_map, pos, text_length=None):
-    for elem, attr, start, length in node_map:
+    # Binary search: node_map is sorted by start position
+    i = bisect.bisect_right(node_map, pos, key=lambda e: e[2]) - 1
+    if i >= 0:
+        elem, attr, start, length = node_map[i]
         if start <= pos < start + length:
             char_offset = pos - start
             cfi_path = _encode_cfi_path(elem, attr, char_offset)
 
-            # End CFI: same path, offset = start + text_length
             end_cfi_path = None
             if text_length is not None:
                 end_offset = char_offset + text_length
-                # If end stays within same text node, use same path
                 if end_offset <= length:
                     end_cfi_path = _encode_cfi_path(elem, attr, end_offset)
                 else:
-                    # End spills to next node - use end of current node
                     end_cfi_path = _encode_cfi_path(elem, attr, length)
 
             return (elem, attr, char_offset, cfi_path, end_cfi_path)
