@@ -9,19 +9,20 @@ def build_text_map(root) -> tuple[str, list[tuple]]:
     return ''.join(flat_text), node_map
 
 
-def _walk(elem, flat_text, node_map):
+def _walk(elem, flat_text, node_map, offset=0):
     if isinstance(elem, etree._Comment):
-        return
+        return offset
     if elem.text:
-        start = sum(len(s) for s in flat_text)
-        node_map.append((elem, 'text', start, len(elem.text)))
+        node_map.append((elem, 'text', offset, len(elem.text)))
         flat_text.append(elem.text)
+        offset += len(elem.text)
     for child in elem:
-        _walk(child, flat_text, node_map)
+        offset = _walk(child, flat_text, node_map, offset)
         if child.tail:
-            start = sum(len(s) for s in flat_text)
-            node_map.append((child, 'tail', start, len(child.tail)))
+            node_map.append((child, 'tail', offset, len(child.tail)))
             flat_text.append(child.tail)
+            offset += len(child.tail)
+    return offset
 
 
 def _normalize(text: str) -> str:
