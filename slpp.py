@@ -22,14 +22,13 @@ import re
 import sys
 from numbers import Number
 
-import six
 
 ERRORS = {
-    'unexp_end_string': u'Unexpected end of string while parsing Lua string.',
-    'unexp_end_table': u'Unexpected end of table while parsing Lua string.',
-    'mfnumber_minus': u'Malformed number (no digits after initial minus).',
-    'mfnumber_dec_point': u'Malformed number (no digits after decimal point).',
-    'mfnumber_sci': u'Malformed number (bad scientific format).',
+    'unexp_end_string': 'Unexpected end of string while parsing Lua string.',
+    'unexp_end_table': 'Unexpected end of table while parsing Lua string.',
+    'mfnumber_minus': 'Malformed number (no digits after initial minus).',
+    'mfnumber_dec_point': 'Malformed number (no digits after decimal point).',
+    'mfnumber_sci': 'Malformed number (bad scientific format).',
 }
 
 def sequential(lst):
@@ -62,7 +61,7 @@ class SLPP(object):
         self.tab = '\t'
 
     def decode(self, text):
-        if not text or not isinstance(text, six.string_types):
+        if not text or not isinstance(text, str):
             return
         self.text = text
         self.at, self.ch, self.depth = 0, '', 0
@@ -82,9 +81,7 @@ class SLPP(object):
 
         if isinstance(obj, str):
             s += '"%s"' % obj.replace(r'"', r'\"')
-        elif six.PY2 and isinstance(obj, unicode):
-            s += '"%s"' % obj.encode('utf-8').replace(r'"', r'\"')
-        elif six.PY3 and isinstance(obj, bytes):
+        elif isinstance(obj, bytes):
             s += '"{}"'.format(''.join(r'\x{:02x}'.format(c) for c in obj))
         elif isinstance(obj, bool):
             s += str(obj).lower()
@@ -96,7 +93,7 @@ class SLPP(object):
             self.depth += 1
             if len(obj) == 0 or (not isinstance(obj, dict) and len([
                     x for x in obj
-                    if isinstance(x, Number) or (isinstance(x, six.string_types) and len(x) < 10)
+                    if isinstance(x, Number) or (isinstance(x, str) and len(x) < 10)
                ]) == len(obj)):
                 newline = tab = ''
             dp = tab * self.depth
@@ -215,7 +212,7 @@ class SLPP(object):
                     self.next_chr()
                     if k is not None:
                         o[idx] = k
-                    if len([key for key in o if isinstance(key, six.string_types + (float,  bool, tuple))]) == 0:
+                    if len([key for key in o if isinstance(key, (str, float, bool, tuple))]) == 0:
                         so = sorted([key for key in o])
                         if sequential(so):
                             ar = []
