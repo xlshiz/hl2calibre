@@ -3,3 +3,5 @@ __pycache__/
 .pytest_cache/
 *.pyc
 hl2calibre.zip
+docs/example.mrexpt
+docs/PITFALLS.md
